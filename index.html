@@ -1,0 +1,561 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131c">
+  <title>Meine Cloud</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #10131c;
+      --panel: #191e2b;
+      --line: #2c3445;
+      --text: #eef2ff;
+      --muted: #9ba8bd;
+      --blue: #7c9cff;
+      --red: #ff7e87;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      background: radial-gradient(ellipse at top, #202b45, var(--bg) 55%);
+      color: var(--text);
+      font: 15px/1.5 system-ui, sans-serif;
+    }
+    button, input { font: inherit; }
+    button {
+      cursor: pointer; border: 0; border-radius: 10px;
+      padding: 11px 15px; background: var(--blue);
+      color: #101522; font-weight: 700;
+    }
+    button:disabled { opacity: .5; cursor: wait; }
+    button.secondary {
+      background: #252d3e; color: var(--text);
+      border: 1px solid var(--line);
+    }
+    button.danger { color: var(--red); }
+    input {
+      width: 100%; padding: 12px;
+      background: #101522; color: var(--text);
+      border: 1px solid var(--line); border-radius: 10px;
+    }
+    input:focus { outline: 2px solid var(--blue); }
+    .wrap { max-width: 960px; margin: auto; padding: 36px 18px; }
+    .brand { display: flex; gap: 13px; align-items: center; margin-bottom: 28px; }
+    .logo {
+      width: 48px; height: 48px; border-radius: 14px;
+      background: #273653; display: grid; place-items: center;
+      font-size: 25px;
+    }
+    h1 { margin: 0; font-size: 25px; letter-spacing: -.5px; }
+    h2 { margin: 0 0 18px; font-size: 20px; }
+    p { color: var(--muted); }
+    .card {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 18px; padding: 23px; margin-bottom: 18px;
+      box-shadow: 0 15px 50px #0002;
+    }
+    .login { max-width: 430px; margin: 60px auto; }
+    .field { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 7px; color: var(--muted); }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .between { justify-content: space-between; }
+    .row > input { min-width: 0; }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    #status { min-height: 24px; color: var(--muted); margin: 10px 0 0; }
+    #status.error { color: var(--red); }
+    #status.success { color: #7fe0b0; }
+    .upload-area {
+      border: 1px dashed #536486; border-radius: 13px;
+      padding: 18px; background: #131927;
+    }
+    .toolbar { display: flex; gap: 12px; margin: 18px 0; }
+    .toolbar input { flex: 1; }
+    .file {
+      display: flex; align-items: center; gap: 13px;
+      padding: 15px 0; border-bottom: 1px solid var(--line);
+    }
+    .file:last-child { border-bottom: 0; }
+    .file-icon {
+      width: 43px; height: 43px; flex-shrink: 0;
+      border-radius: 12px; background: #273653;
+      display: grid; place-items: center; font-size: 21px;
+    }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name { overflow-wrap: anywhere; font-weight: 650; }
+    .file-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .actions { display: flex; gap: 7px; }
+    .actions button { padding: 8px 10px; }
+    .empty { text-align: center; padding: 35px 10px; color: var(--muted); }
+    .hidden { display: none !important; }
+    @media(max-width: 600px) {
+      .wrap { padding: 22px 12px; }
+      .card { padding: 17px; }
+      .file { align-items: flex-start; }
+      .actions { flex-direction: column; }
+      .actions button { font-size: 12px; padding: 7px; }
+      .toolbar { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <div class="logo">☁</div>
+      <div>
+        <h1>Meine Cloud</h1>
+        <div class="muted small">Deine Dateien. Dein privater Speicher.</div>
+      </div>
+    </header>
+
+    <section id="login" class="card login">
+      <h2>Willkommen zurück</h2>
+      <p>Melde dich an, um deine Dateien zu öffnen.</p>
+      <form id="login-form">
+        <div class="field">
+          <label for="email">E-Mail-Adresse</label>
+          <input id="email" type="email" autocomplete="username"
+                 required maxlength="254">
+        </div>
+        <div class="field">
+          <label for="password">Passwort</label>
+          <input id="password" type="password"
+                 autocomplete="current-password" required>
+        </div>
+        <button id="login-button" type="submit" style="width:100%">
+          Sicher anmelden
+        </button>
+      </form>
+      <p id="login-status" role="status"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="card">
+        <div class="row between">
+          <div>
+            <h2>Deine Dateien</h2>
+            <div class="muted small" id="account"></div>
+          </div>
+          <button class="secondary" id="logout">Abmelden</button>
+        </div>
+
+        <div class="upload-area">
+          <label for="file-input">Dateien hochladen (max. 50 MiB je Datei)</label>
+          <div class="row">
+            <input id="file-input" type="file" multiple>
+            <button id="upload-button">Hochladen</button>
+          </div>
+          <p class="small">Deine Dateien werden privat gespeichert.</p>
+        </div>
+
+        <div id="status" role="status" aria-live="polite"></div>
+
+        <div class="toolbar">
+          <input id="search" type="search" placeholder="Dateien durchsuchen…"
+                 aria-label="Dateien durchsuchen">
+          <button id="sort-button" class="secondary">Neueste zuerst ↓</button>
+        </div>
+
+        <div class="row between">
+          <span class="muted small" id="file-count">0 Dateien</span>
+          <span class="muted small">Sortiert nach Upload-Zeit</span>
+        </div>
+        <div id="file-list"></div>
+      </div>
+    </section>
+    <footer class="muted small">
+      Private Datei-Cloud · GitHub Pages + Supabase
+    </footer>
+  </main>
+
+<script>
+(() => {
+  "use strict";
+
+  // HIER DEINE ECHTEN SUPABASE-WERTE EINTRAGEN:
+  const SUPABASE_URL = "https://DEIN-PROJEKT.supabase.co";
+  const SUPABASE_KEY = "DEIN_PUBLISHABLE_KEY";
+
+  const BUCKET = "private-cloud";
+  const MAX_SIZE = 50 * 1024 * 1024;
+
+  const $ = id => document.getElementById(id);
+  const loginView = $("login");
+  const dashboard = $("dashboard");
+  const loginStatus = $("login-status");
+  const status = $("status");
+  const list = $("file-list");
+
+  let client;
+  let currentUser = null;
+  let files = [];
+  let newestFirst = true;
+  let busy = false;
+
+  function message(text, kind = "") {
+    status.textContent = text;
+    status.className = kind;
+  }
+
+  function loginMessage(text) {
+    loginStatus.textContent = text;
+  }
+
+  function setBusy(value) {
+    busy = value;
+    $("upload-button").disabled = value;
+    $("login-button").disabled = value;
+  }
+
+  function showSignedIn(user) {
+    currentUser = user;
+    loginView.classList.add("hidden");
+    dashboard.classList.remove("hidden");
+    $("account").textContent = user.email || "Angemeldet";
+    $("password").value = "";
+  }
+
+  function showSignedOut() {
+    currentUser = null;
+    files = [];
+    loginView.classList.remove("hidden");
+    dashboard.classList.add("hidden");
+    list.replaceChildren();
+    $("file-count").textContent = "0 Dateien";
+    loginMessage("");
+    message("");
+  }
+
+  function formatDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Unbekanntes Datum";
+    return new Intl.DateTimeFormat("de-DE", {
+      dateStyle: "medium", timeStyle: "short"
+    }).format(date);
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    const units = ["KB", "MB", "GB", "TB"];
+    let size = bytes / 1024, i = 0;
+    while (size >= 1024 && i < units.length - 1) {
+      size /= 1024; i++;
+    }
+    return size.toLocaleString("de-DE", {
+      maximumFractionDigits: 1
+    }) + " " + units[i];
+  }
+
+  function safeName(name) {
+    // Nur für den Objektschlüssel, nicht für die Anzeige.
+    return name.normalize("NFKC")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .slice(0, 150) || "datei";
+  }
+
+  function iconFor(name) {
+    const ext = name.split(".").pop().toLowerCase();
+    if (["png","jpg","jpeg","gif","webp","svg"].includes(ext)) return "🖼️";
+    if (["pdf"].includes(ext)) return "📕";
+    if (["zip","rar","7z","gz"].includes(ext)) return "🗜️";
+    if (["mp4","mov","mkv"].includes(ext)) return "🎬";
+    if (["mp3","wav","flac"].includes(ext)) return "🎵";
+    if (["doc","docx","txt","odt"].includes(ext)) return "📄";
+    return "📁";
+  }
+
+  async function loadFiles() {
+    if (!currentUser) return;
+
+    const { data, error } = await client
+      .from("cloud_files")
+      .select("id, user_id, file_name, storage_path, file_size, content_type, uploaded_at")
+      .eq("user_id", currentUser.id)
+      .order("uploaded_at", { ascending: !newestFirst });
+
+    if (error) throw error;
+    files = data || [];
+    renderFiles();
+  }
+
+  function renderFiles() {
+    const query = $("search").value.trim().toLocaleLowerCase("de-DE");
+    const shown = files.filter(file =>
+      file.file_name.toLocaleLowerCase("de-DE").includes(query)
+    );
+
+    $("file-count").textContent =
+      shown.length + (shown.length === 1 ? " Datei" : " Dateien");
+    list.replaceChildren();
+
+    if (!shown.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = files.length
+        ? "Keine passenden Dateien gefunden."
+        : "Noch keine Dateien. Lade deine erste Datei hoch.";
+      list.append(empty);
+      return;
+    }
+
+    for (const file of shown) {
+      const row = document.createElement("div");
+      row.className = "file";
+
+      const ico = document.createElement("div");
+      ico.className = "file-icon";
+      ico.textContent = iconFor(file.file_name);
+
+      const info = document.createElement("div");
+      info.className = "file-info";
+
+      const name = document.createElement("div");
+      name.className = "file-name";
+      name.textContent = file.file_name;
+
+      const meta = document.createElement("div");
+      meta.className = "file-meta";
+      meta.textContent = formatDate(file.uploaded_at) +
+        " · " + formatSize(Number(file.file_size));
+
+      info.append(name, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "actions";
+
+      const download = document.createElement("button");
+      download.className = "secondary";
+      download.textContent = "↓";
+      download.title = "Datei herunterladen";
+      download.setAttribute("aria-label", file.file_name + " herunterladen");
+      download.addEventListener("click", () => downloadFile(file));
+
+      const remove = document.createElement("button");
+      remove.className = "secondary danger";
+      remove.textContent = "✕";
+      remove.title = "Datei löschen";
+      remove.setAttribute("aria-label", file.file_name + " löschen");
+      remove.addEventListener("click", () => deleteFile(file));
+
+      actions.append(download, remove);
+      row.append(ico, info, actions);
+      list.append(row);
+    }
+  }
+
+  async function uploadFiles() {
+    if (busy || !currentUser) return;
+    const selected = Array.from($("file-input").files || []);
+    if (!selected.length) {
+      message("Bitte wähle zuerst mindestens eine Datei aus.", "error");
+      return;
+    }
+
+    if (selected.some(file => file.size > MAX_SIZE)) {
+      message("Mindestens eine Datei ist größer als 50 MiB.", "error");
+      return;
+    }
+
+    setBusy(true);
+    let succeeded = 0;
+    const errors = [];
+
+    try {
+      for (const file of selected) {
+        const path = currentUser.id + "/" + crypto.randomUUID()
+          + "-" + safeName(file.name);
+
+        const { error: uploadError } = await client.storage
+          .from(BUCKET)
+          .upload(path, file, {
+            upsert: false,
+            contentType: file.type || "application/octet-stream"
+          });
+
+        if (uploadError) {
+          errors.push(file.name + ": " + uploadError.message);
+          continue;
+        }
+
+        const { error: insertError } = await client
+          .from("cloud_files")
+          .insert({
+            user_id: currentUser.id,
+            file_name: file.name,
+            storage_path: path,
+            file_size: file.size,
+            content_type: file.type || null
+          });
+
+        if (insertError) {
+          // Verhindert verwaiste Dateien, falls Metadaten nicht speicherbar sind.
+          await client.storage.from(BUCKET).remove([path]);
+          errors.push(file.name + ": Metadaten konnten nicht gespeichert werden.");
+          continue;
+        }
+        succeeded++;
+      }
+
+      $("file-input").value = "";
+      await loadFiles();
+      message(
+        succeeded + " Datei(en) hochgeladen." +
+        (errors.length ? " Fehler: " + errors.join(" | ") : ""),
+        errors.length ? "error" : "success"
+      );
+    } catch (error) {
+      message("Upload fehlgeschlagen: " + error.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadFile(file) {
+    if (!currentUser || busy) return;
+    setBusy(true);
+    message("Download wird vorbereitet …");
+
+    try {
+      const { data, error } = await client.storage
+        .from(BUCKET).download(file.storage_path);
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.file_name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      message("Download gestartet.", "success");
+    } catch (error) {
+      message("Download fehlgeschlagen: " + error.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteFile(file) {
+    if (!currentUser || busy) return;
+    if (!confirm('Datei "' + file.file_name + '" wirklich löschen?')) return;
+
+    setBusy(true);
+    message("Datei wird gelöscht …");
+
+    try {
+      // Erst die Datei im privaten Bucket löschen.
+      const { error: storageError } = await client.storage
+        .from(BUCKET).remove([file.storage_path]);
+      if (storageError) throw storageError;
+
+      const { error: dbError } = await client
+        .from("cloud_files")
+        .delete()
+        .eq("id", file.id)
+        .eq("user_id", currentUser.id);
+      if (dbError) {
+        message("Datei gelöscht, Metadaten konnten nicht entfernt werden: "
+          + dbError.message, "error");
+        await loadFiles();
+        return;
+      }
+
+      await loadFiles();
+      message("Datei erfolgreich gelöscht.", "success");
+    } catch (error) {
+      message("Löschen fehlgeschlagen: " + error.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function start() {
+    if (!window.supabase || SUPABASE_URL.includes("DEIN-PROJEKT")
+        || SUPABASE_KEY.includes("DEIN_PUBLISHABLE_KEY")) {
+      loginMessage("Bitte trage zuerst deine Supabase-URL und deinen Publishable-Key im Code ein.");
+      $("login-button").disabled = true;
+      return;
+    }
+
+    client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+
+    $("login-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      if (busy) return;
+      setBusy(true);
+      loginMessage("Anmeldung läuft …");
+
+      try {
+        const { data, error } = await client.auth.signInWithPassword({
+          email: $("email").value.trim(),
+          password: $("password").value
+        });
+        if (error) throw error;
+
+        showSignedIn(data.user);
+        loginMessage("");
+        await loadFiles();
+      } catch (error) {
+        showSignedOut();
+        loginMessage("Anmeldung fehlgeschlagen. E-Mail und Passwort prüfen.");
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    $("logout").addEventListener("click", async () => {
+      const { error } = await client.auth.signOut();
+      if (error) {
+        message("Abmeldung fehlgeschlagen: " + error.message, "error");
+        return;
+      }
+      showSignedOut();
+    });
+
+    $("upload-button").addEventListener("click", uploadFiles);
+    $("search").addEventListener("input", renderFiles);
+    $("sort-button").addEventListener("click", async () => {
+      newestFirst = !newestFirst;
+      $("sort-button").textContent = newestFirst
+        ? "Neueste zuerst ↓" : "Älteste zuerst ↑";
+      try { await loadFiles(); }
+      catch (error) { message("Liste konnte nicht geladen werden.", "error"); }
+    });
+
+    client.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        showSignedOut();
+      }
+    });
+
+    const { data, error } = await client.auth.getSession();
+    if (error) {
+      loginMessage("Sitzung konnte nicht geprüft werden.");
+      return;
+    }
+
+    if (data.session) {
+      showSignedIn(data.session.user);
+      try { await loadFiles(); }
+      catch (error) {
+        message("Dateiliste konnte nicht geladen werden: " + error.message, "error");
+      }
+    }
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
